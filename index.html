@@ -346,7 +346,14 @@ select option{color:var(--text)}
   .stats-grid{grid-template-columns:repeat(4,1fr)}
   .filter-row{grid-template-columns:repeat(4,1fr)}
 }
+
+
 </style>
+
+<!-- Tambahkan Library Firebase HTML5 -->
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+ 
 </head>
 <body>
 
@@ -712,6 +719,72 @@ select option{color:var(--text)}
 </div>
 
 <script>
+
+
+const firebaseConfig = {
+  apiKey: "AIzaSyBlFZ9-rLGGTqJ7RWn1ue7WR_nigHW9Y4I",
+  authDomain: "sikobar-634da.firebaseapp.com",
+  projectId: "sikobar-634da",
+  storageBucket: "sikobar-634da.firebasestorage.app",
+  messagingSenderId: "476075113059",
+  appId: "1:476075113059:web:8addee433ce3c8ee949656",
+  measurementId: "G-M7T72C9W78"
+};
+
+// Mencegah error jika aplikasi dimuat ulang
+if (!firebase.apps.length) {
+  firebase.initializeApp(firebaseConfig);
+}
+const database = firebase.database();
+
+
+// 2. Tambahkan Listener agar UI langsung terupdate saat ada perubahan di HP lain
+database.ref('user_photos').on('value', (snapshot) => {
+  const photos = snapshot.val();
+  if (photos) {
+    localStorage.setItem(USER_PHOTOS_KEY, JSON.stringify(photos));
+    if (currentUser) {
+      currentUser.foto = getUserPhoto(currentUser.username) || currentUser.foto;
+      initProfil();
+      updateHomeAvatar();
+      if (currentUser.role === 'petugas') renderTeamRoster();
+    }
+  }
+});
+
+database.ref('reports').on('value', (snapshot) => {
+  const val = snapshot.val();
+  if (val) {
+    const arr = Object.values(val);
+    arr.sort((a, b) => b.ts - a.ts); // Urutkan laporan dari yang terbaru
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(arr));
+    onReportsUpdated();
+  }
+});
+
+
+
+
+
+// 5. Ganti Storage Helpers Laporan (loadReports, saveReports, addReport)
+function loadReports(){
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if(raw) return JSON.parse(raw);
+  } catch(e){}
+  return []; // Hapus dummy/seed data agar bersih saat menarik dari Firebase
+}
+
+function saveReports(arr){
+  // Kosongkan: penyimpanan lokal otomatis ditangani oleh listener Firebase di atas
+}
+
+function addReport(report){
+  // Laporan baru dipush ke Firebase Realtime Database
+  database.ref('reports/' + report.id).set(report);
+}
+
+
 // ═══════════════════════════
 // STATE & STORAGE
 // ═══════════════════════════
@@ -755,6 +828,7 @@ let currentReport = null;
 let autoRefreshTimer = null;
 let lastReportCount = 0;
 
+// 3. Ganti Fungsi getUserPhoto & setUserPhoto
 function getUserPhoto(username) {
   try {
     const customPhotos = JSON.parse(localStorage.getItem(USER_PHOTOS_KEY) || '{}');
@@ -765,15 +839,12 @@ function getUserPhoto(username) {
 }
 
 function setUserPhoto(username, dataUrl) {
-  try {
-    const customPhotos = JSON.parse(localStorage.getItem(USER_PHOTOS_KEY) || '{}');
-    customPhotos[username] = dataUrl;
-    localStorage.setItem(USER_PHOTOS_KEY, JSON.stringify(customPhotos));
-  } catch(e){
-    console.warn('Gagal menyimpan foto profil ke localStorage:', e);
-  }
+  // Data dikirim ke cloud Firebase, otomatis menyinkronkan UI ke perangkat petugas lain
+  database.ref('user_photos/' + username).set(dataUrl);
 }
 
+
+// 4. Ganti Fungsi handleProfilePhotoUpload
 function handleProfilePhotoUpload(event) {
   const file = event.target.files && event.target.files[0];
   if (!file) return;
@@ -784,36 +855,20 @@ function handleProfilePhotoUpload(event) {
     img.onload = function() {
       const canvas = document.createElement('canvas');
       const maxDim = 250;
-      let w = img.width;
-      let h = img.height;
+      let w = img.width, h = img.height;
 
       if (w > h) {
-        if (w > maxDim) {
-          h = Math.round((h * maxDim) / w);
-          w = maxDim;
-        }
+        if (w > maxDim) { h = Math.round((h * maxDim) / w); w = maxDim; }
       } else {
-        if (h > maxDim) {
-          w = Math.round((w * maxDim) / h);
-          h = maxDim;
-        }
+        if (h > maxDim) { w = Math.round((w * maxDim) / h); h = maxDim; }
       }
 
-      canvas.width = w;
-      canvas.height = h;
+      canvas.width = w; canvas.height = h;
       const ctx = canvas.getContext('2d');
       ctx.drawImage(img, 0, 0, w, h);
 
       const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.8);
-      if (currentUser) {
-        setUserPhoto(currentUser.username, compressedDataUrl);
-        currentUser.foto = compressedDataUrl;
-        initProfil();
-        updateHomeAvatar();
-        if (currentUser.role === 'petugas') {
-          renderTeamRoster();
-        }
-      }
+      if (currentUser) setUserPhoto(currentUser.username, compressedDataUrl);
     };
     img.src = e.target.result;
   };
@@ -833,19 +888,22 @@ function isHariIni(timestamp) {
          date.getFullYear() === today.getFullYear();
 }
 
-// ── Storage helpers ──
+// 5. Ganti Storage Helpers Laporan (loadReports, saveReports, addReport)
 function loadReports(){
-  try{
-    const raw=localStorage.getItem(STORAGE_KEY);
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
     if(raw) return JSON.parse(raw);
-  }catch(e){}
-  const seed=[
-    {id:'r1',nama_petugas:'Budi Santoso',regu:'Rupam I',lokasi:'Blok A',status:'Aman',catatan:'Kondisi blok aman, semua WBP berada di dalam sel.',gps:'-1.7208, 128.0157',waktu:fmtDate(new Date(Date.now()-3600000)),photo1:null,photo2:null,ts:Date.now()-3600000},
-    {id:'r2',nama_petugas:'Ahmad Rifai',regu:'Rupam II',lokasi:'Blok B',status:'Peringatan',catatan:'Ditemukan kerusakan kecil pada terali sel nomor 12. Perlu perbaikan.',gps:'-1.7210, 128.0160',waktu:fmtDate(new Date(Date.now()-7200000)),photo1:null,photo2:null,ts:Date.now()-7200000},
-    {id:'r3',nama_petugas:'Siti Rahayu',regu:'Rupam III',lokasi:'Blok Wanita',status:'Aman',catatan:'Patroli rutin selesai. Semua kondusif.',gps:'-1.7205, 128.0155',waktu:fmtDate(new Date(Date.now()-10800000)),photo1:null,photo2:null,ts:Date.now()-10800000},
-  ];
-  saveReports(seed);
-  return seed;
+  } catch(e){}
+  return []; // Hapus dummy/seed data agar bersih saat menarik dari Firebase
+}
+
+function saveReports(arr){
+  // Kosongkan: penyimpanan lokal otomatis ditangani oleh listener Firebase di atas
+}
+
+function addReport(report){
+  // Laporan baru dipush ke Firebase Realtime Database
+  database.ref('reports/' + report.id).set(report);
 }
 
 function initTimeAndLocation() {
