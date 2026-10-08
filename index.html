@@ -753,18 +753,18 @@ database.ref('user_photos').on('value', (snapshot) => {
   }
 });
 
+// Listener Firebase untuk Laporan Realtime di Semua Perangkat
 database.ref('reports').on('value', (snapshot) => {
   const val = snapshot.val();
   if (val) {
     const arr = Object.values(val);
     arr.sort((a, b) => b.ts - a.ts); // Urutkan laporan dari yang terbaru
     localStorage.setItem(STORAGE_KEY, JSON.stringify(arr));
-    onReportsUpdated();
+  } else {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify([]));
   }
+  onReportsUpdated();
 });
-
-
-
 
 
 // 5. Ganti Storage Helpers Laporan (loadReports, saveReports, addReport)
@@ -1070,20 +1070,31 @@ window.addEventListener('sikeliling:new-report',()=>{
   onReportsUpdated();
 });
 
+// Fungsi untuk memperbarui Notifikasi & Status Rekan Regu secara Realtime
 function onReportsUpdated(){
-  const arr=loadReports();
-  if(currentUser?.role==='admin' && document.getElementById('screen-admin').classList.contains('active')){
-    const newCount=arr.length;
-    if(newCount>lastReportCount){
-      lastReportCount=newCount;
-      showLiveToast('📋 Laporan baru masuk dari '+arr[0].nama_petugas+' ('+arr[0].lokasi+')');
-    }
+  const arr = loadReports();
+  const newCount = arr.length;
+
+  // 1. Tampilkan Notifikasi Toast saat ada laporan baru dari device lain
+  if (lastReportCount > 0 && newCount > lastReportCount && arr[0]) {
+    showLiveToast('📋 Laporan baru: ' + arr[0].nama_petugas + ' (' + arr[0].lokasi + ')');
+  }
+  lastReportCount = newCount;
+
+  // 2. Update Tampilan Admin jika sedang di Dashboard Admin
+  if (currentUser?.role === 'admin' && document.getElementById('screen-admin').classList.contains('active')){
     renderAdminList();
   }
-  if(currentUser?.role==='petugas' && document.getElementById('screen-petugas').classList.contains('active')){
-    renderPetugasList();
+
+  // 3. Update Informasi Rekan Regu & Laporan Hari Ini untuk Petugas
+  if (currentUser?.role === 'petugas'){
+    renderTeamRoster(); // Memperbarui status kontrol rekan regu secara otomatis
+    if (document.getElementById('screen-petugas').classList.contains('active')){
+      renderPetugasList();
+    }
   }
 }
+
 
 function showLiveToast(msg){
   let t=document.getElementById('live-toast');
