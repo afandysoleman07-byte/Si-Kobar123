@@ -1028,19 +1028,12 @@ function renderTeamRoster() {
 
 
 function saveReports(arr){
-  try{localStorage.setItem(STORAGE_KEY,JSON.stringify(arr));}catch(e){
-    try{
-      const slim=arr.map((r,i)=>i>2?{...r,photo1:null,photo2:null}:r);
-      localStorage.setItem(STORAGE_KEY,JSON.stringify(slim));
-    }catch(e2){console.warn('Storage full');}
-  }
+  // Dikosongkan: penyimpanan lokal otomatis ditangani oleh listener Firebase
 }
 
 function addReport(report){
-  const arr=loadReports();
-  arr.unshift(report);
-  saveReports(arr);
-  window.dispatchEvent(new CustomEvent('sikeliling:new-report',{detail:report}));
+  // Laporan baru dipush ke Firebase Realtime Database agar tersinkronisasi ke semua device
+  database.ref('reports/' + report.id).set(report);
 }
 
 function saveSession(user){
